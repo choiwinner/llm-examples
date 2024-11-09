@@ -33,10 +33,13 @@ with st.sidebar:
 
     st.subheader('Gemini Model을 선택하세요.')
     selected_model = st.sidebar.selectbox('Choose Gemini Model', ['gemini-1.5-flash', 'gemini-1.5-flash-latest','gemini-1.5-pro', 'gemini-1.5-pro-latest'], key='selected_model')
-    "gemini-1.5-flash : 분당 15회 요청 가능, 분당 100만 토큰 처리, 하루 1500회 요청 제한"
-    "gemini-1.5-pro : 분당 2회 요청 가능, 분당 32,000 토큰 처리, 하루 50회 요청 제한"
     "[참고 자료 1](https://blog.naver.com/PostView.naver?blogId=itandtech&logNo=223624403146)"
     "[참고 자료 2](https://ai.google.dev/gemini-api/docs/models/gemini?hl=ko)"
+
+    temp = st.slider("llm 생성시 창의성을 조절합니다. 1에 가까울수록 창의적인 출력이 생성됩니다"
+                            , 0.0, 1.0, 0.0)
+    
+    st.info(f"선택된 llm 창의성은 {temp} 입니다.")
 
 st.title("💬 Chatbot")
 st.caption("🚀 A Streamlit chatbot powered by Gemini")
@@ -78,7 +81,7 @@ if query := st.chat_input("질문을 입력해주세요."):
                     {question}
                     """
                     ) 
-                    | ChatGoogleGenerativeAI(model=selected_model, temperature = 0) 
+                    | ChatGoogleGenerativeAI(model=selected_model, temperature= temp) 
                     | StrOutputParser()
                     )
             # chain 호출

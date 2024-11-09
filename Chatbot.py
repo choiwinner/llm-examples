@@ -2,7 +2,6 @@
 #python version = 3.10.12
 #langchain-google-genai =2.0.4
 #streamlit =1.38.0
-#gemini_api_key = 'AIzaSyCRNu3bAi56bwx_f34ehrBVfEZ7XuA7x7M'
 import streamlit as st
 import os
 
@@ -28,6 +27,9 @@ with st.sidebar:
         if (gemini_api_key[0:2] != 'AI') or (len(gemini_api_key) != 39):
             st.error("잘못된 key 입력입니다. 다시 입력해 주세요.")
             st.stop()
+
+    if data_clear :=st.button("대화 클리어"):
+        st.session_state['messages'] = [] #st.session_state[messages]를 초기화
 
     st.subheader('Gemini Model을 선택하세요.')
     selected_model = st.sidebar.selectbox('Choose Gemini Model', ['gemini-1.5-flash', 'gemini-1.5-flash-latest','gemini-1.5-pro', 'gemini-1.5-pro-latest'], key='selected_model')

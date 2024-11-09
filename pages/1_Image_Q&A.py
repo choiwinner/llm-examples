@@ -1,4 +1,3 @@
-#gemini_api_key = 'AIzaSyCRNu3bAi56bwx_f34ehrBVfEZ7XuA7x7M'
 import streamlit as st
 from PIL import Image
 import google.generativeai as genai

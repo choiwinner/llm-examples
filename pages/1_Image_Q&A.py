@@ -20,7 +20,7 @@ with st.sidebar:
             st.stop()
 
     if data_clear :=st.button("대화 클리어"):
-        st.session_state['messages'] = [] #st.session_state[messages]를 초기화
+        st.session_state['messages_img'] = [] #st.session_state[messages]를 초기화
 
 st.title("📝 Image Q&A with Gemini")
 
@@ -32,8 +32,8 @@ if not gemini_api_key:
 genai.configure(api_key=gemini_api_key)
 
 #1. st.session_state 초기화
-if "messages" not in st.session_state:
-    st.session_state['messages'] = [] #st.session_state에 messages가 없으면 빈 리스트로 초기화
+if "messages_img" not in st.session_state:
+    st.session_state['messages_img'] = [] #st.session_state에 messages가 없으면 빈 리스트로 초기화
     #2.'assistant' icon으로 write를 출력한다.
 
 # 파일 업로더 위젯
@@ -65,16 +65,16 @@ uploaded_file_info = genai.upload_file(path="temp_image.jpg", display_name="uplo
 model = genai.GenerativeModel(model_name="gemini-1.5-pro-latest")
 
 #1. st.session_state 초기화
-if "messages" not in st.session_state:
-    st.session_state['messages'] = [] #st.session_state에 messages가 없으면 빈 리스트로 초기화
+if "messages_img" not in st.session_state:
+    st.session_state['messages_img'] = [] #st.session_state에 messages가 없으면 빈 리스트로 초기화
     #2.'assistant' icon으로 write를 출력한다.
 
 st.chat_message("assistant").write("안녕하세요. 무엇을 도와드릴까요?")
 
 #2. 이전 대화 내용을 출력
 # st.session_state['messages']가 있고 길이가 0 이상이면 실행 
-if ("messages" in st.session_state) and (len(st.session_state['messages'])>0):
-    for role, message in st.session_state['messages']:  #st.session_state['messages']는 tuple 형태로 저장되어 있음.
+if ("messages_img" in st.session_state) and (len(st.session_state['messages_img'])>0):
+    for role, message in st.session_state['messages_img']:  #st.session_state['messages']는 tuple 형태로 저장되어 있음.
         st.chat_message(role).write(message)
 
 #3. query를 입력받는다.
@@ -83,13 +83,13 @@ if query := st.chat_input("질문을 입력해주세요."):
     #4.'user' icon으로 query를 출력한다.
     st.chat_message("user").write(query)
     #5. query를 session_state 'user'에 append 한다.
-    st.session_state['messages'].append(('user',query))
+    st.session_state['messages_img'].append(('user',query))
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             # llm에 사진에 대해서 물어 본다.
             response = model.generate_content([uploaded_file_info, query])
             st.write(response.text)
-            st.session_state['messages'].append(('assistant',response.text))
+            st.session_state['messages_img'].append(('assistant',response.text))
 
 

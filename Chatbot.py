@@ -8,10 +8,12 @@ import os
 
 #langchain, genai
 from langchain_google_genai import ChatGoogleGenerativeAI
-
+from langchain.chains import LLMChain
 from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain.memory import ConversationBufferWindowMemory
 
 with st.sidebar:
     gemini_api_key = st.text_input('Gemini_API_KEY를 입력하세요.', key="langchain_search_api_gemini", type="password")
@@ -30,6 +32,7 @@ with st.sidebar:
 
     if data_clear :=st.button("대화 클리어"):
         st.session_state['messages'] = [] #st.session_state[messages]를 초기화
+        st.session_state.chat_history = []
 
     st.subheader('Gemini Model을 선택하세요.')
     selected_model = st.sidebar.selectbox('Choose Gemini Model', ['gemini-1.5-flash', 'gemini-1.5-flash-latest','gemini-1.5-pro', 'gemini-1.5-pro-latest'], key='selected_model')
@@ -52,6 +55,13 @@ if "messages" not in st.session_state:
     st.session_state['messages'] = [] #st.session_state에 messages가 없으면 빈 리스트로 초기화
     #2.'assistant' icon으로 write를 출력한다.
 
+#윈도우 크기 k를 지정하면 최근 k개의 대화만 기억하고 이전 대화는 삭제
+if "memory" not in st.session_state:
+    st.session_state.memory = ConversationBufferWindowMemory(memory_key="chat_history", k=4) 
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
 st.chat_message("assistant").write("안녕하세요. 무엇을 도와드릴까요?")
 
 #2. 이전 대화 내용을 출력
@@ -59,6 +69,20 @@ st.chat_message("assistant").write("안녕하세요. 무엇을 도와드릴까�
 if ("messages" in st.session_state) and (len(st.session_state['messages'])>0):
     for role, message in st.session_state['messages']:  #st.session_state['messages']는 tuple 형태로 저장되어 있음.
         st.chat_message(role).write(message)
+
+prompt = PromptTemplate(
+    template="""당신은 질문에 답하는 Chatbot으로 질문에 대해 자세하게 답변하고 답변의 참고 문헌이나 URL 정보도 알려주세요.
+    chat_history: {chat_history},
+    Human: {question},
+    AI:
+    """
+    )
+
+llm_chain = LLMChain(
+    llm=ChatGoogleGenerativeAI(model=selected_model, temperature= temp),
+    memory=st.session_state.memory,
+    prompt=prompt
+    )
 
 #3. query를 입력받는다.
 if query := st.chat_input("질문을 입력해주세요."): 
@@ -73,21 +97,13 @@ if query := st.chat_input("질문을 입력해주세요."):
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            chain = (
-                ChatPromptTemplate.from_template(
-                    """
-                    당신은 질문에 답하는 Chatbot으로 질문에 대해 자세하게 답변하고 답변의 참고 문헌이나 URL 정보도 알려주세요.
-                    [질문]
-                    {question}
-                    """
-                    ) 
-                    | ChatGoogleGenerativeAI(model=selected_model, temperature= temp) 
-                    | StrOutputParser()
-                    )
             # chain 호출
-            response = chain.invoke({"question": query})
+            response = llm_chain.run(question=query)
             st.write(response)
             st.session_state['messages'].append(('assistant',response))
+
+
+    
             
 # 참고 자료 
 # 1. https://www.youtube.com/watch?v=VtS8yF2ItgI

@@ -161,12 +161,14 @@ def main():
         #5. query를 session_state 'user'에 append 한다.
         st.session_state['chat_history'].append(('user',query))
 
+
+
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 # chain 호출
                 response = st.session_state.conversation({'question': query})
                 st.write(response['answer'])
-                st.session_state['chat_history'].append(('assistant',response['answer']))
+                #st.session_state['chat_history'].append(('assistant',response['answer']))
 
         
 

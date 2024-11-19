@@ -18,6 +18,8 @@ from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.chains import ConversationalRetrievalChain
+from langchain.chains import LLMChain
+from langchain.schema.runnable import RunnableMap
 
 def process_pdfs2(pdf_docs):
     with st.spinner("PDF 파일 처리 중..."):
@@ -89,6 +91,7 @@ def handle_userinput(user_question):
         else:
             st.write(f"AI: {message.content}")
 
+
 def main():
 
     st.set_page_config(page_title="Lagnchain_with_pdf", page_icon=":books:")
@@ -101,7 +104,9 @@ def main():
     if "vectorstore" not in st.session_state:
         st.session_state.vectorstore = None
     if "pdf_input" not in st.session_state:
-        st.session_state.pdf_input = None     
+        st.session_state.pdf_input = None 
+    if "retriever_from_llM" not in st.session_state:
+        st.session_state.retriever_from_llM = {}
 
     with st.sidebar:
         gemini_api_key = st.text_input('Gemini_API_KEY를 입력하세요.', key="langchain_search_api_gemini", type="password")
@@ -122,7 +127,8 @@ def main():
             st.session_state.conversation = None
             st.session_state['chat_history'] = []
             st.session_state.vectorstore = None
-            st.session_state.pdf_input == None
+            st.session_state.pdf_input = None
+            st.session_state.retriever_from_llM = {}
             
     #0. gemini api key Setting
     if not gemini_api_key:
@@ -140,11 +146,80 @@ def main():
         pdf_docs = st.file_uploader("PDF 파일을 업로드하세요", type="pdf", accept_multiple_files=True)
 
         st.session_state.vectorstore = process_pdfs2(pdf_docs)
+        
+    
+    retriever_from_llM = st.session_state.vectorstore.as_retriever(search_type="mmr",search_kwargs={'k':5, 'fetch_k': 10})
 
-    # create conversation chain
-        st.session_state.conversation = get_conversation_chain(st.session_state.vectorstore)
+    template = """당신은 인공지능 ChatBOT으로 Question 내용에 대해서 대답합니다.
+    대답은 Context에 있는 내용을 참조해서만 답변합니다.
+    되도록이면 자세한 내용으로 대답하고 context의 있는 original source도 같이 보여주세요.
+    Context: {context}
+    Question: {question}
+    """
 
     st.chat_message("assistant").write("안녕하세요. 무엇을 도와드릴까요?")
+
+    if query := st.chat_input("질문을 입력해주세요."):
+        st.session_state.messages.append({"role": "user", "content": query})
+        st.chat_message("user").write(query)
+
+    prompt = ChatPromptTemplate.from_template(template)
+
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+
+    chain = RunnableMap({
+        "context": lambda x: retriever_from_llM.get_relevant_documents(x['question']),
+        "question": lambda x: x['question']
+    }) | prompt | llm
+
+    #1. st.session_state 초기화
+    if "messages" not in st.session_state:
+        st.session_state['messages'] = [] #st.session_state에 messages가 없으면 빈 리스트로 초기화
+        #2.'assistant' icon으로 write를 출력한다.
+
+    #윈도우 크기 k를 지정하면 최근 k개의 대화만 기억하고 이전 대화는 삭제
+    if "memory" not in st.session_state:
+        st.session_state.memory = ConversationBufferWindowMemory(memory_key="chat_history", k=4) 
+
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    #2. 이전 대화 내용을 출력
+    # st.session_state['messages']가 있고 길이가 0 이상이면 실행 
+    if ("messages" in st.session_state) and (len(st.session_state['messages'])>0):
+        for role, message in st.session_state['messages']:  #st.session_state['messages']는 tuple 형태로 저장되어 있음.
+            st.chat_message(role).write(message)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            # chain 호출
+            response = chain.invoke({'question': query}).content
+            st.write(response)
+            st.session_state['messages'].append(('assistant',response))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     #2. 이전 대화 내용을 출력
     # st.session_state['chat_history']가 있으면 실행
@@ -160,8 +235,6 @@ def main():
         st.chat_message("user").write(query)
         #5. query를 session_state 'user'에 append 한다.
         st.session_state['chat_history'].append(('user',query))
-
-
 
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):

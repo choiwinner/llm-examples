@@ -9,3 +9,5 @@ anthropic>=0.3.0
 trubrics>=1.4.3
 streamlit-feedback
 langchain-community
+PyPDF2
+pymupdf

@@ -13,6 +13,7 @@ import google.generativeai as genai
 from langchain.prompts import ChatPromptTemplate
 
 from langchain.vectorstores import FAISS
+from langchain_community.vectorstores.faiss import DistanceStrategy #vectorstores의 거리 계산 방식 결정
 from langchain.retrievers import EnsembleRetriever # 여러 retriever를 입력으로 받아 처리
 from langchain_community.retrievers import BM25Retriever  #TF-IDF 계열의 검색 알고리즘
 
@@ -24,16 +25,20 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-import rank_bm25
+#import rank_bm25
 
+import time
 
 #PyPDFLoader: 주로 텍스트 추출에 초점을 맞추고 있습니다.
-def process_pdfs():
+def process_pdfs(vector_distance_cal):
     with st.spinner("PDF 파일 처리 중..."):
         #임베딩 모델 불로오기
         embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
         # 저장된 인덱스 로드(allow_dangerous_deserialization=True 필요)
-        vectorstore = FAISS.load_local("Data/DRAM_index", embeddings, allow_dangerous_deserialization=True)
+        vectorstore = FAISS.load_local("Data/DRAM_index", 
+        embeddings,
+        distance_strategy=vector_distance_cal, 
+        allow_dangerous_deserialization=True)
         #st.success(f"총 {len(pdf_docs)}파일, {len(data)}개의 페이지를 성공적으로 로드했습니다.")
         df = pd.read_pickle('Data/DRAM_SPEC_data.pkl')
         data_list = df.to_list()
@@ -58,7 +63,10 @@ def get_conversation_chain(vectorstore,data_list,f_ratio,query):
     prompt = ChatPromptTemplate.from_template(template)
     
     # initialize the # initialize the bm25 retriever(mmr 방식:30개->10개)
-    faiss_retriever=vectorstore.as_retriever(search_type="mmr",search_kwargs={'k':10, 'fetch_k': 30})
+
+
+    faiss_retriever=vectorstore.as_retriever(search_type="mmr",
+    search_kwargs={'k':10, 'fetch_k': 30})
 
     # initialize the bm25 retriever(10개)
     bm25_retriever = BM25Retriever.from_documents(data_list)
@@ -70,13 +78,20 @@ def get_conversation_chain(vectorstore,data_list,f_ratio,query):
     ensemble_retriever_combine = EnsembleRetriever(
         retrievers=[bm25_retriever, faiss_retriever], weights=[1-f_ratio, f_ratio] 
         ,retriever_type="combine_documents")
-
+    
     multiqueryretriever = MultiQueryRetriever.from_llm(ensemble_retriever_combine, llm=llm)
+
+    context_output_init = multiqueryretriever.get_relevant_documents(query)
 
     chain = RunnableMap({
         "context": lambda x: multiqueryretriever.get_relevant_documents(x['question']),
         "question": lambda x: x['question']
     }) | prompt | llm |StrOutputParser()
+
+    #chain = RunnableMap({
+    #    "context": lambda x: multiqueryretriever.get_relevant_documents(x['question']),
+    #    "question": lambda x: x['question']
+    #}) | prompt | llm |StrOutputParser()
 
     response = chain.invoke({'question': query})
 
@@ -97,6 +112,14 @@ def get_chat_history_str(chat_history):
     return "\n".join([f"{entry['role'].capitalize()}: {entry['content']}" for entry in chat_history])
 
 def main():
+
+    #langsmith Setting
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com" 
+    os.environ["LANGCHAIN_PROJECT"] = "pr-oily-offense-18"               #표시될 PJT명 Setting
+    os.environ["LANGCHAIN_API_KEY"] = "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"
+    from langsmith import Client
+    client = Client()
 
     st.set_page_config(page_title="Lagnchain_with_pdf", page_icon=":books:")
     st.title("🦜🔗 Lagnchain_with_pdf")
@@ -140,7 +163,18 @@ def main():
 
         if faiss_ratio := st.slider("ensemble ratio?(faiss 비율)", 0, 100, 75):
             st.info(f"faiss ratio is {faiss_ratio}%")
+
+        if vector_option_1 := st.selectbox("Select the vector distance cal method?",("MAX_INNER_PRODUCT", "DOT_PRODUCT", "EUCLIDEAN_DISTANCE"),):
+
+            st.info(f"You selected: {vector_option_1}")
             
+            if vector_option_1 == "MAX_INNER_PRODUCT":
+                vector_distance_cal = DistanceStrategy.MAX_INNER_PRODUCT #내적(코사인 유사도와 유사)
+            if vector_option_1 == "DOT_PRODUCT":
+                vector_distance_cal = DistanceStrategy.DOT_PRODUCT #점곱(내적과 동일) 
+            if vector_option_1 == "EUCLIDEAN_DISTANCE":
+                vector_distance_cal = DistanceStrategy.EUCLIDEAN_DISTANCE #유클리드 거리(L2)
+           
     #0. gemini api key Setting
     if not gemini_api_key:
         st.warning("Gemini API Key를 입력해 주세요.")
@@ -153,7 +187,7 @@ def main():
 
     # 파일이 업로드되면 처리
     if st.session_state.vectorstore == None:
-        st.session_state.vectorstore,st.session_state.data_list = process_pdfs()
+        st.session_state.vectorstore,st.session_state.data_list = process_pdfs(vector_distance_cal)
 
     st.chat_message("assistant").write("안녕하세요. 무엇을 도와드릴까요?")
 
@@ -166,6 +200,8 @@ def main():
 
     #3. query를 입력받는다.
     if query := st.chat_input("질문을 입력해주세요."):
+
+        start_time = time.time()
 
         #4.'user' icon으로 query를 출력한다.
         st.chat_message("user").write(query)
@@ -180,6 +216,9 @@ def main():
                                                   float(faiss_ratio/100),
                                                   query)
                 st.write(response)
+                end_time = time.time()
+                total_time = (end_time - start_time)
+                st.info(f"검색 소요 시간: {total_time}초")
                 #6. response session_state 'assistant'에 append 한다.
                 st.session_state['chat_history'].append(('assistant',response))
 

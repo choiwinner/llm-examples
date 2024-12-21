@@ -25,6 +25,8 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+import google.generativeai as genai
+
 #import rank_bm25
 
 import time
@@ -47,7 +49,7 @@ def process_pdfs(vector_distance_cal):
 
 def get_conversation_chain(vectorstore,data_list,f_ratio,query):
    
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+    llm = ChatGoogleGenerativeAI(model=st.session_state.gemini_model, temperature=0)   
 
     template = """당신은 인공지능 ChatBOT으로 Question 내용에 대해서 대답합니다.
     대답은 Context에 있는 내용을 참조해서만 답변합니다.
@@ -123,7 +125,9 @@ def main():
     if "pdf_input" not in st.session_state:
         st.session_state.pdf_input = None 
     if "data_list" not in st.session_state:
-        st.session_state.data_list = []    
+        st.session_state.data_list = []
+    if "gemini_model" not in st.session_state:
+        st.session_state.gemini_model = 'gemini-2.0-flash-exp'    
 
     with st.sidebar:
         gemini_api_key = st.text_input('Gemini_API_KEY를 입력하세요.', key="langchain_search_api_gemini", type="password")
@@ -147,6 +151,16 @@ def main():
             st.session_state.pdf_input == None
             st.session_state.data_list = []
 
+        # API 키로 genai 구성
+        if Spec_name :=st.button("Gemini_model "):
+            genai.configure(api_key=gemini_api_key)
+            gemini_model = []
+            for m in genai.list_models():
+                if "generateContent" in m.supported_generation_methods:
+                    gemini_model.append(m.name)
+            df_gemini_model =pd.Series(gemini_model)
+            st.dataframe(df_gemini_model)
+
         if Spec_name :=st.button("Spec_name 보기"):
             df = pd.read_csv("Data/DRAM_Spec_Names.csv",encoding='utf-8')
             st.dataframe(df)
@@ -154,7 +168,8 @@ def main():
         if faiss_ratio := st.slider("ensemble ratio?(faiss 비율)", 0, 100, 75):
             st.info(f"faiss ratio is {faiss_ratio}%")
 
-        if vector_option_1 := st.selectbox("Select the vector distance cal method?",("MAX_INNER_PRODUCT", "DOT_PRODUCT", "EUCLIDEAN_DISTANCE"),):
+        if vector_option_1 := st.selectbox("Select the vector distance cal method?",
+                                           ("MAX_INNER_PRODUCT", "DOT_PRODUCT", "EUCLIDEAN_DISTANCE")):
 
             st.info(f"You selected: {vector_option_1}")
             
@@ -164,6 +179,14 @@ def main():
                 vector_distance_cal = DistanceStrategy.DOT_PRODUCT #점곱(내적과 동일) 
             if vector_option_1 == "EUCLIDEAN_DISTANCE":
                 vector_distance_cal = DistanceStrategy.EUCLIDEAN_DISTANCE #유클리드 거리(L2)
+
+        if gemini_model_option := st.selectbox("Select the gemini model?",
+                                               ("gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash")):
+            
+            st.info(f"You selected: {gemini_model_option}")
+
+            st.session_state.gemini_model = gemini_model_option
+                
            
     #0. gemini api key Setting
     if not gemini_api_key:
